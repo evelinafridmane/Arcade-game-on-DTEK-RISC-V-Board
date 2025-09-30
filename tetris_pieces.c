@@ -1,3 +1,11 @@
+void handle_interrupt(unsigned cause) 
+{}
+
+/* Add your code here for initializing interrupts. */
+void labinit(void)
+{}
+
+
 typedef struct {
     int x, y;      // top-left position on the screen / grid
     char color;    // color of the piece
@@ -42,7 +50,7 @@ int main() {
         {0,0,0,0}
     }};
 
-    shape O = { 60, 90, 10, {
+    shape O = { 70, 100, 10, {
         {0,0,0,0},
         {0,1,1,0},
         {0,1,1,0},
@@ -50,7 +58,7 @@ int main() {
     }
     };
 
-    shape I = { 70, 100, 2, {
+    shape I = { 80, 120, 2, {
         {0,0,1,0},
         {0,0,1,0},
         {0,0,1,0},
