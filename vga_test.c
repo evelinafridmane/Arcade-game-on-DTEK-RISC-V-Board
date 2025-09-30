@@ -1,7 +1,7 @@
-void handle_interrupt(unsigned cause) 
+/*void handle_interrupt(unsigned cause) 
 {}
 
-/* Add your code here for initializing interrupts. */
+
 void labinit(void)
 {}
 int main() {
@@ -26,3 +26,5 @@ int main() {
         // Do nothing, just keep block on screen
     }
 }
+
+*/
