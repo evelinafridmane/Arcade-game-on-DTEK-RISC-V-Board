@@ -253,35 +253,85 @@ void clear_shape(volatile char *VGA, shape *next){
 
 void rotate_piece(shape *p) {
     int temp[4][4];
-
+    volatile int button_pressed = get_btn();
+   
+    if (button_pressed){
+        
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {
-            temp[x][3 - y] = p->shape[y][x]; // 90° clockwise
+        temp[x][3 - y] = p->shape[y][x]; // 90° clockwise
+           
         }
     }
+    }
+    int valid = 1;
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                if (temp[y][x]) {
+                    if (p->x + x < 0) valid = 0;  // outside left
+                    if (p->x + x >= GRID_WIDTH) valid = 0;  // outside right
+                    if (p->y + y >= GRID_HEIGHT) valid = 0; // outside bottom
+                }
+            }
+        }
 
-    // Copy back to the shape
-    for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            p->shape[y][x] = temp[y][x];
+        // only apply rotation if it's valid
+        if (valid) {
+            for (int y = 0; y < 4; y++)
+                for (int x = 0; x < 4; x++)
+                    p->shape[y][x] = temp[y][x];
+        }
 }
 
+void move_piece(shape *p){
+    
+
+    volatile int sw_pulled = get_sw();
+
+    int max_w = 0;
+    for (int y = 0; y < 4; y++){
+        for (int x = 0; x < 4; x++){
+            if (current_piece.shape[y][x] && x + 1 > max_w){
+                max_w = x + 1;  
+    }}}
+
+    if(sw_pulled&0x1){
+        if (p->x > 0)      // prevent going past left wall
+            p->x -= 1;
+    
+    }
+
+    if(sw_pulled&0x2){
+        if (p->x + max_w < GRID_WIDTH) // prevent going past right wall
+            p->x += 1;
+    }
+
+}
+
+int collision(shape *p) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            if (p->shape[y][x]) {
+                int new_y = p->y + y + 1;
+                int new_x = p->x + x;
 
 
-
-
-
-
+                // check collision with locked pieces
+                if (grid[new_y][new_x]) 
+                    return 0;
+            }
+        }
+    }
+    return 1;
+}
 
 void tick(volatile char *VGA){
     
-    volatile int button_pressed = get_btn();
-
-    if (button_pressed){
-        
-        rotate_piece(&current_piece);
+    volatile int sw_pulled = get_sw();
+    if(sw_pulled){
+    move_piece(&current_piece);
     }
-
+ 
     // compute piece height
     int max_row = 0;
     for (int y = 0; y < 4; y++){
@@ -289,27 +339,31 @@ void tick(volatile char *VGA){
             if (current_piece.shape[y][x] && y + 1 > max_row){
                 max_row = y + 1;  // max_row = height of the piece
     }}}
-    // falls unless bottom of piece is below the last row
-    if (!(current_piece.y + max_row < GRID_HEIGHT)){
+    // falls unless bottom of piece is below the last row or collision
+    if ((current_piece.y + max_row < GRID_HEIGHT) && collision(&current_piece) ){
+        current_piece.y += 1;  // piece falls
+    }
+    else{
+        for (int y = 0; y < 4; y++)
+        for (int x = 0; x < 4; x++)
+            if (current_piece.shape[y][x])
+                grid[current_piece.y + y][current_piece.x + x] = 1;
+                
         if (num_locked < MAX_PIECES){
             locked_pieces[num_locked++] = current_piece;
         }
         clear_shape(VGA, &next_piece);
         spawn_next();
         draw_next_piece(VGA, &next_piece);
-        
     }
-    else{
-        current_piece.y += 1;  // piece falls
-        
-    }
+
     draw_grid(VGA); // redraw background
     for (int i = 0; i < num_locked; i++){
         draw_shape(VGA, &locked_pieces[i]);
     }
     draw_shape(VGA, &current_piece);
-    
 }
+
 void handle_interrupt(unsigned cause) 
 {
     if (cause == 16){ //Timer
@@ -345,12 +399,18 @@ int main() {
     draw_next_piece(VGA, &next_piece);
     
    
-
+    int prev_btn = 0;
     
     while(1) {
-       
-    }
+        int btn_state = get_btn();
+        if (btn_state && !prev_btn) {
+            rotate_piece(&current_piece);
+        }
+        prev_btn = btn_state;
+    
 
+   
+}
 }
 
 
