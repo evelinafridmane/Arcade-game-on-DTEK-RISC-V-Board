@@ -159,6 +159,8 @@ int get_sw( void ){
   //printf("%d",i);
 }
 
+
+/*Set-up drawing and erasing things on the grids*/
 void draw_grid(volatile char *VGA){
     
     for (int row = 0; row < GRID_HEIGHT; row++){
@@ -231,7 +233,7 @@ void draw_next_piece(volatile char *VGA, shape *next){ // draws the future piece
     }
 }
 
-void clear_shape(volatile char *VGA, shape *next){
+void clear_next_shape(volatile char *VGA, shape *next){
     int preview_x = width_screen - 60;
     int preview_y = 40;
 
@@ -250,6 +252,66 @@ void clear_shape(volatile char *VGA, shape *next){
         }
     }
 }
+
+
+void update_cell(int row, int col, char color){
+    int pixel_index = (y_offset + row * block_size) * width_screen + (x_offset + col * block_size);
+    
+    for (int y = 0; y < block_size; y++){
+        for (int x = 0; x < block_size; x++) {
+            // draw borders regardless
+            if (y == 0 || x == 0 || y == block_size - 1 || x == block_size - 1)
+                VGA[pixel_index + y * width_screen + x] = GRID_COLOR;
+            else
+                VGA[pixel_index + y * width_screen + x] = color; // fill block
+        }
+    }
+}
+
+
+
+/*Piece Property functions*/
+#define ERASE   0
+#define DRAW    1
+#define LOCK    2
+
+void update_shape(shape *p, char mode){
+    for (int y = 0; y < 4; y++) {
+
+        for (int x = 0; x < 4; x++) {
+
+            if (! p->shape[y][x]) continue; 
+
+            int row = p->y + y;
+            int col = p->x +x;
+
+            if (row < 0 || row >= GRID_HEIGHT || col < 0 || col >= GRID_WIDTH) continue;
+
+            switch (mode){
+
+                case ERASE:
+                    if (!grid[row][col])
+                        update_cell(row, col, 0); // empty background
+                    else if (grid[row][col])
+                        update_cell(row, col, grid[row][col]); // locked piece
+                        
+                    break;
+                
+                case DRAW:
+                    update_cell(row, col, p->color);
+                    break;
+                
+                case LOCK:
+
+                    grid[row][col] = p->color;
+                    update_cell(row, col, p->color);
+                    break;
+
+                }
+            }
+        }
+    }
+
 
 void rotate_piece(shape *p) {
     int temp[4][4];
@@ -277,9 +339,12 @@ void rotate_piece(shape *p) {
 
         // only apply rotation if it's valid
         if (valid) {
+            update_shape(p, ERASE); // erase old
+
             for (int y = 0; y < 4; y++)
                 for (int x = 0; x < 4; x++)
                     p->shape[y][x] = temp[y][x];
+            update_shape(p, DRAW);  // draw new
         }
 }
 
@@ -291,19 +356,20 @@ void move_piece(shape *p){
     int max_w = 0;
     for (int y = 0; y < 4; y++){
         for (int x = 0; x < 4; x++){
-            if (current_piece.shape[y][x] && x + 1 > max_w){
+            if (p->shape[y][x] && x + 1 > max_w){
                 max_w = x + 1;  
     }}}
-
-    if(sw_pulled&0x1){
+    if((sw_pulled&0x1) != 0){
+        update_shape(p, ERASE);
         if (p->x > 0)      // prevent going past left wall
             p->x -= 1;
-    
+        update_shape(p, DRAW);
     }
-
-    if(sw_pulled&0x2){
+    if((sw_pulled&0x2) != 0){
+        update_shape(p, ERASE);
         if (p->x + max_w < GRID_WIDTH) // prevent going past right wall
             p->x += 1;
+        update_shape(p, DRAW);
     }
 
 }
@@ -315,10 +381,9 @@ int collision(shape *p) {
                 int new_y = p->y + y + 1;
                 int new_x = p->x + x;
 
-
-                // check collision with locked pieces
-                if (grid[new_y][new_x]) 
-                    return 0;
+                // check collision with locked pieces & background
+                if (new_y >= GRID_HEIGHT) return 0;
+                if (grid[new_y][new_x]) return 0;
             }
         }
     }
@@ -329,39 +394,27 @@ void tick(volatile char *VGA){
     
     volatile int sw_pulled = get_sw();
     if(sw_pulled){
-    move_piece(&current_piece);
+        move_piece(&current_piece);
     }
- 
-    // compute piece height
-    int max_row = 0;
-    for (int y = 0; y < 4; y++){
-        for (int x = 0; x < 4; x++){
-            if (current_piece.shape[y][x] && y + 1 > max_row){
-                max_row = y + 1;  // max_row = height of the piece
-    }}}
-    // falls unless bottom of piece is below the last row or collision
-    if ((current_piece.y + max_row < GRID_HEIGHT) && collision(&current_piece) ){
-        current_piece.y += 1;  // piece falls
+   
+    update_shape(&current_piece, ERASE);
+
+    if (collision(&current_piece)){
+        current_piece.y+=1;
+        update_shape(&current_piece,DRAW);
     }
     else{
-        for (int y = 0; y < 4; y++)
-        for (int x = 0; x < 4; x++)
-            if (current_piece.shape[y][x])
-                grid[current_piece.y + y][current_piece.x + x] = 1;
+        update_shape(&current_piece, LOCK);
                 
         if (num_locked < MAX_PIECES){
             locked_pieces[num_locked++] = current_piece;
         }
-        clear_shape(VGA, &next_piece);
+        clear_next_shape(VGA, &next_piece);
         spawn_next();
         draw_next_piece(VGA, &next_piece);
     }
 
-    draw_grid(VGA); // redraw background
-    for (int i = 0; i < num_locked; i++){
-        draw_shape(VGA, &locked_pieces[i]);
-    }
-    draw_shape(VGA, &current_piece);
+    
 }
 
 void handle_interrupt(unsigned cause) 
@@ -371,7 +424,7 @@ void handle_interrupt(unsigned cause)
         *tmr_stat = 0x0;
 
         timeoutcount++;
-        if (timeoutcount == 10){
+        if (timeoutcount == 8){
             timeoutcount = 0;
             tick(VGA);
         }
@@ -382,6 +435,11 @@ void handle_interrupt(unsigned cause)
 
 
 int main() {
+    for (int r = 0; r < GRID_HEIGHT; r++)
+    for (int c = 0; c < GRID_WIDTH; c++)
+        grid[r][c] = 0;
+    draw_grid(VGA);
+
     labinit();
 
     int sw = get_sw();
@@ -394,7 +452,7 @@ int main() {
     
    
     
-    draw_grid(VGA);
+   // 
     draw_shape(VGA, &current_piece);
     draw_next_piece(VGA, &next_piece);
     
