@@ -312,6 +312,21 @@ void update_shape(shape *p, char mode){
         }
     }
 
+    int collision(shape *p) {
+        for (int y = 0; y < 4; y++) {
+            for (int x = 0; x < 4; x++) {
+                if (p->shape[y][x]) {
+                    int new_y = p->y + y + 1;
+                    int new_x = p->x + x;
+    
+                    // check collision with locked pieces & background
+                    if (new_y >= GRID_HEIGHT) return 0;
+                    if (grid[new_y][new_x]) return 0;
+                }
+            }
+        }
+        return 1;
+    } 
 
 void rotate_piece(shape *p) {
     int temp[4][4];
@@ -329,22 +344,20 @@ void rotate_piece(shape *p) {
     int valid = 1;
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
-                if (temp[y][x]) {
-                    if (p->x + x < 0) valid = 0;  // outside left
-                    if (p->x + x >= GRID_WIDTH) valid = 0;  // outside right
-                    if (p->y + y >= GRID_HEIGHT) valid = 0; // outside bottom
+                if(collision(&current_piece)==0){
+                    valid =0;
                 }
             }
         }
 
         // only apply rotation if it's valid
         if (valid) {
-            update_shape(p, ERASE); // erase old
+            //update_shape(p, ERASE); // erase old
 
             for (int y = 0; y < 4; y++)
                 for (int x = 0; x < 4; x++)
                     p->shape[y][x] = temp[y][x];
-            update_shape(p, DRAW);  // draw new
+            //update_shape(p, DRAW);  // draw new
         }
 }
 
@@ -359,6 +372,7 @@ void move_piece(shape *p){
             if (p->shape[y][x] && x + 1 > max_w){
                 max_w = x + 1;  
     }}}
+    if(collision(&current_piece)){
     if((sw_pulled&0x1) != 0){
         update_shape(p, ERASE);
         if (p->x > 0)      // prevent going past left wall
@@ -371,24 +385,21 @@ void move_piece(shape *p){
             p->x += 1;
         update_shape(p, DRAW);
     }
-
-}
-
-int collision(shape *p) {
-    for (int y = 0; y < 4; y++) {
-        for (int x = 0; x < 4; x++) {
-            if (p->shape[y][x]) {
-                int new_y = p->y + y + 1;
-                int new_x = p->x + x;
-
-                // check collision with locked pieces & background
-                if (new_y >= GRID_HEIGHT) return 0;
-                if (grid[new_y][new_x]) return 0;
-            }
+    if((sw_pulled&0x4) != 0){
+        update_shape(p, ERASE);
+        // drop piece until collision
+        while (collision(p)) {
+            p->y += 1;
         }
+        // move back one step to the last valid position
+        p->y -= 1;
+
+        update_shape(p, DRAW);
     }
-    return 1;
+    }
 }
+
+
 
 void tick(volatile char *VGA){
     
@@ -401,7 +412,7 @@ void tick(volatile char *VGA){
 
     if (collision(&current_piece)){
         current_piece.y+=1;
-        update_shape(&current_piece,DRAW);
+        
     }
     else{
         update_shape(&current_piece, LOCK);
@@ -413,7 +424,15 @@ void tick(volatile char *VGA){
         spawn_next();
         draw_next_piece(VGA, &next_piece);
     }
+    
+    draw_grid(VGA);
 
+    
+    for (int i = 0; i < num_locked; i++)
+        draw_shape(VGA, &locked_pieces[i]);
+
+    
+    draw_shape(VGA, &current_piece);
     
 }
 
