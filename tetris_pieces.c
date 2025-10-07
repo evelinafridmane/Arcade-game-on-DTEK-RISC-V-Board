@@ -157,9 +157,10 @@ int is_filled(shape *p) {
             if (p->shape[y][x]) {
                 int row = p->y + y;
                 int col = p->x + x;
-                if (grid[row][col]) {
-                    return 1;
+                if (row >= 0 && row < GRID_HEIGHT && col >= 0 && col < GRID_WIDTH){
+                    if (grid[row][col]) return 1;
                 }
+                
             }
         }
     }
@@ -407,6 +408,24 @@ void update_shape(shape *p, char mode){
         }
     }
 
+
+int check_fit(shape *p, int new_shape[4][4]){
+    for (int row = 0; row < 4; row++){
+        for (int col = 0; col < 4; col++){
+            if (new_shape[row][col]){
+                int grid_row = p->y + row;
+                int grid_col = p->x + col;
+
+                if (grid_row < 0 || grid_row >= GRID_HEIGHT || grid_col < 0 || grid_col >= GRID_WIDTH)
+                    return 0; // out of bounds
+                if (grid[grid_row][grid_col])
+                    return 0; // blocked by locked piece
+            }
+        }
+    }
+    return 1;
+}
+
 int collision(shape *p) {
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
@@ -426,35 +445,26 @@ int collision(shape *p) {
 
 void rotate_piece(shape *p) {
     int temp[4][4];
-    volatile int button_pressed = get_btn();
-   
-    if (button_pressed){
+    for (int y = 0; y < 4; y++){ 
+        for (int x = 0; x < 4; x++){
+             temp[y][x] = 0; }}
+    
+    
         
-    for (int y = 0; y < 4; y++) {
-        for (int x = 0; x < 4; x++) {
-        temp[x][3 - y] = p->shape[y][x]; // 90° clockwise
+    for (int row = 0; row < 4; row++) {
+        for (int col = 0; col < 4; col++) {
+        temp[col][3 - row] = p->shape[row][col]; // 90° clockwise
            
         }
     }
-    }
-    int valid = 1;
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) {
-                if(collision(&current_piece)==0){
-                    valid =0;
-                }
+    
+    if (check_fit(p,temp)){
+        for (int row = 0; row < 4; row++){
+            for (int col = 0; col < 4; col++){
+                p->shape[row][col] = temp[row][col];
             }
         }
-
-        // only apply rotation if it's valid
-        if (valid) {
-            //update_shape(p, ERASE); // erase old
-
-            for (int y = 0; y < 4; y++)
-                for (int x = 0; x < 4; x++)
-                    p->shape[y][x] = temp[y][x];
-            //update_shape(p, DRAW);  // draw new
-        }
+    }
 }
 
 void move_piece(shape *p){
@@ -495,6 +505,41 @@ void move_piece(shape *p){
     }
 }
 
+void clear_lines(void){
+    for (int y = GRID_HEIGHT -1; y >= 0; y--){
+        int full = 1;
+
+        for (int x= 0; x < GRID_WIDTH; x++){
+            if (grid[y][x] == 0){
+                full=0;
+                break;
+            }
+        }
+
+        if (full) {
+            for (int x = 0; x < GRID_WIDTH; x++){
+                grid[y][x] = 0;
+                update_cell(y,x,0);
+            }
+
+            for (int yy = y; yy > 0; yy--) {
+                for (int x = 0; x < GRID_WIDTH; x++) {
+                    grid[yy][x] = grid[yy - 1][x];
+                    update_cell(yy, x, grid[yy][x]);
+                }
+            }
+
+            for (int x = 0; x < GRID_WIDTH; x++) {
+                grid[0][x] = 0;
+                update_cell(0, x, 0);
+            }
+
+            // After shifting, recheck same row (since we moved rows down)
+            y++;
+        }
+    }
+}
+
 
 void tick(volatile char *VGA){
     
@@ -506,15 +551,18 @@ void tick(volatile char *VGA){
     update_shape(&current_piece, ERASE);
 
     if (collision(&current_piece)){
-        current_piece.y+=1;
-        
+        current_piece.y+=1;  
     }
+
     else{
         update_shape(&current_piece, LOCK);
                 
+        clear_lines();
+        
         if (num_locked < MAX_PIECES){
             locked_pieces[num_locked++] = current_piece;
         }
+        
         clear_next_shape(VGA, &next_piece);
         spawn_next();
         draw_next_piece(VGA, &next_piece);
@@ -546,14 +594,35 @@ void handle_interrupt(unsigned cause)
     
 }
 
+void start (){
+    for (int i = 0; i < width_screen * height_screen; i++) {
+        VGA[i] = 0x00; // black
+    }
+
+    const char *msg = "TETRIS";
+    
+    int msg_len = 6;
+    int start_x = width_screen / 2 - (msg_len * 6) / 2;
+    int start_y = height_screen/2  - 6;
+
+    for (int i = 0; i < msg_len; i++) {
+        draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
+    }
+
+  
+}
 
 
 int main() {
+    
+    start ();
+    delay(2000); 
     for (int r = 0; r < GRID_HEIGHT; r++)
     for (int c = 0; c < GRID_WIDTH; c++)
         grid[r][c] = 0;
+    
     draw_grid(VGA);
-
+    
     labinit();
 
     int sw = get_sw();
@@ -569,14 +638,14 @@ int main() {
     draw_next_piece(VGA, &next_piece);
     
    
-    int prev_btn = 0;
+    
     
     while(1) {
-        int btn_state = get_btn();
-        if (btn_state && !prev_btn) {
+        
+   
+        if (get_btn()){
             rotate_piece(&current_piece);
         }
-        prev_btn = btn_state;
     
 
    
