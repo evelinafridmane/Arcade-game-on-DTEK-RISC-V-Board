@@ -111,6 +111,37 @@ shape pieces[] = {
 }}
 };
 
+const unsigned char font5x7[][5] = {
+    // Each byte column (bit = 1 => pixel on)
+    // A–Z (ASCII 'A' = 65 → index 0)
+    {0x7E,0x11,0x11,0x7E,0x00}, // A
+    {0x7F,0x49,0x49,0x36,0x00}, // B
+    {0x3E,0x41,0x41,0x22,0x00}, // C
+    {0x7F,0x41,0x41,0x3E,0x00}, // D
+    {0x7F,0x49,0x49,0x41,0x00}, // E
+    {0x7F,0x09,0x09,0x01,0x00}, // F
+    {0x3E,0x41,0x51,0x72,0x00}, // G
+    {0x7F,0x08,0x08,0x7F,0x00}, // H
+    {0x00,0x41,0x7F,0x41,0x00}, // I
+    {0x20,0x40,0x41,0x3F,0x00}, // J
+    {0x7F,0x08,0x14,0x63,0x00}, // K
+    {0x7F,0x40,0x40,0x40,0x00}, // L
+    {0x7F,0x06,0x06,0x7F,0x00}, // M
+    {0x7F,0x06,0x18,0x7F,0x00}, // N
+    {0x3E,0x41,0x41,0x3E,0x00}, // O
+    {0x7F,0x09,0x09,0x06,0x00}, // P
+    {0x3E,0x41,0x61,0x7E,0x00}, // Q
+    {0x7F,0x09,0x19,0x66,0x00}, // R
+    {0x26,0x49,0x49,0x32,0x00}, // S
+    {0x01,0x7F,0x01,0x01,0x00}, // T
+    {0x3F,0x40,0x40,0x3F,0x00}, // U
+    {0x1F,0x60,0x60,0x1F,0x00}, // V
+    {0x7F,0x30,0x30,0x7F,0x00}, // W
+    {0x63,0x1C,0x1C,0x63,0x00}, // X
+    {0x07,0x78,0x08,0x07,0x00}, // Y
+    {0x61,0x51,0x49,0x47,0x00}, // Z
+};
+
 shape locked_pieces[MAX_PIECES];
 int num_locked = 0;
 
@@ -120,10 +151,74 @@ void spawn_piece(shape *current){
     current_piece.y = 0;
 }
 
+int is_filled(shape *p) {
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            if (p->shape[y][x]) {
+                int row = p->y + y;
+                int col = p->x + x;
+                if (grid[row][col]) {
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+void draw_char(int x, int y, char c, char color) {
+    if (c == ' ') return; // skip space
+
+    if (c >= 'A' && c <= 'Z') {
+        const unsigned char *bitmap = font5x7[c - 'A'];
+        for (int col = 0; col < 5; col++) {
+            unsigned char bits = bitmap[col];
+            for (int row = 0; row < 7; row++) {
+                if (bits & (1 << row)) {
+                    VGA[(y + row) * width_screen + (x + col)] = color;
+                }
+            }
+        }
+    }
+}
+void game_over(){
+    for (int i = 0; i < width_screen * height_screen; i++) {
+        VGA[i] = 0x00; // black
+    }
+
+    const char *msg = "GAME OVER";
+    const char *msg2 = "SCORE";
+    int msg_len = 9;
+    int start_x = width_screen / 2 - (msg_len * 8) / 2;
+    int start_y = height_screen / 2 - 9;
+
+    int msg2_len = 5;
+    int start2_x = width_screen / 2 - (msg_len * 4) / 2;
+    int start2_y = height_screen / 2;
+
+
+    for (int i = 0; i < msg_len; i++) {
+        draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
+    }
+
+    for (int i = 0; i < msg2_len; i++) {
+        draw_char(start2_x + i * 5, start2_y, msg2[i], 0xE0); // red letters
+    }
+
+    while (1);
+}
+
+
+
 void spawn_next(){
     current_piece = next_piece;
     next_piece = pieces[rand() % 7];
     spawn_piece(&current_piece);
+   
+    if (is_filled(&current_piece)) {
+        game_over(); 
+    }
+
 }
 
 
@@ -312,16 +407,17 @@ void update_shape(shape *p, char mode){
         }
     }
 
-    int collision(shape *p) {
+int collision(shape *p) {
         for (int y = 0; y < 4; y++) {
             for (int x = 0; x < 4; x++) {
                 if (p->shape[y][x]) {
                     int new_y = p->y + y + 1;
                     int new_x = p->x + x;
     
-                    // check collision with locked pieces & background
+                    // check collision with locked pieces & lower boundary
                     if (new_y >= GRID_HEIGHT) return 0;
                     if (grid[new_y][new_x]) return 0;
+
                 }
             }
         }
@@ -400,7 +496,6 @@ void move_piece(shape *p){
 }
 
 
-
 void tick(volatile char *VGA){
     
     volatile int sw_pulled = get_sw();
@@ -470,8 +565,6 @@ int main() {
     spawn_next();
     
    
-    
-   // 
     draw_shape(VGA, &current_piece);
     draw_next_piece(VGA, &next_piece);
     
