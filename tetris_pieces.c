@@ -644,8 +644,10 @@ int main() {
         
    
         if (get_btn()){
+            delay(2000);
             rotate_piece(&current_piece);
         }
+        
     
 
    
