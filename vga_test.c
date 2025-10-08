@@ -28,3 +28,20 @@ int main() {
 }
 
 */
+/*
+int get_btn(void){
+  volatile int* btn = (volatile int*)0x040000d0;
+  return ((*btn) & 0x1);
+}
+
+
+
+
+
+int get_xrow(void){
+    volatile int* x_axis = (volatile int*)0x040000e0;
+}
+
+int get_ycol(void){
+    volatile int* y_axis = (volatile int*)0x040000e0;
+}*/

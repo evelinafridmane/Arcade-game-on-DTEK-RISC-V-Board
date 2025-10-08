@@ -37,18 +37,42 @@ uint8_t rand() {
 
 //Copied from Lab exercise 1
 void delay( int ms ) {
-    int i;
-    while( ms > 0 ){
-        ms = ms - 1;
-    /* Executing the following for loop should take 1 ms */
-    for( i = 0; i < 4711*ms; i = i + 1 ) /* The constant 4711 must be easy to change! */
-    {
-    /* Do nothing. */
-    }
+    volatile int i;
+    
+    for (int i 
+     = 0; i < ms; i++) {
+        for (int j = 0; j < 4711; j++) {
+            // do nothing
+        }
     }
 }
 
+//SETUP FOR JOYSTICK
+#define JOY_LEFT  0x1  // bit x
+#define JOY_RIGHT 0x2  // bit y
+//#define JOY_BTN  0x4  // bit down
 
+void joystick_init(void){
+    volatile int* gpio_direction = (volatile int*)0x040000e4; //direction
+    *gpio_direction = 0x0;
+
+}
+
+int get_joystick_data(void){
+    volatile int* gpio_data = (volatile int*)0x040000e0; //data
+    return *gpio_data;
+}
+
+int joystick_left(void){
+    return (get_joystick_data() & JOY_LEFT) !=0;
+}
+int joystick_right(void){
+    return (get_joystick_data()& JOY_RIGHT) !=0;
+}
+/*
+int joystick_btn(void){
+    return (get_joystick_data()&JOY_BTN ) !=0;
+}*/
 
 
 
@@ -182,6 +206,29 @@ void draw_char(int x, int y, char c, char color) {
         }
     }
 }
+
+void start() {
+        // clear screen
+        for (int i = 0; i < width_screen * height_screen; i++) {
+            VGA[i] = 0x00; // black background
+        }
+    
+        const char *msg = "TETRIS";
+        int msg_len = 6;
+        int start_x = width_screen / 2 - (msg_len * 8) / 2;
+        int start_y = height_screen / 2 - 6;
+    
+        // draw letters
+        for (int i = 0; i < msg_len; i++) {
+            draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
+        }
+    
+        // hold the screen for ~2 seconds
+        delay(2000);
+    }
+    
+
+
 void game_over(){
     for (int i = 0; i < width_screen * height_screen; i++) {
         VGA[i] = 0x00; // black
@@ -256,9 +303,11 @@ int get_sw( void ){
 }
 
 
+ 
+
+
 /*Set-up drawing and erasing things on the grids*/
 void draw_grid(volatile char *VGA){
-    
     for (int row = 0; row < GRID_HEIGHT; row++){
         for (int col = 0; col < GRID_WIDTH; col++){
             char color = grid[row][col];
@@ -471,7 +520,7 @@ void move_piece(shape *p){
     
 
     volatile int sw_pulled = get_sw();
-
+    
     int max_w = 0;
     for (int y = 0; y < 4; y++){
         for (int x = 0; x < 4; x++){
@@ -479,19 +528,19 @@ void move_piece(shape *p){
                 max_w = x + 1;  
     }}}
     if(collision(&current_piece)){
-    if((sw_pulled&0x1) != 0){
+    if(joystick_left()){
         update_shape(p, ERASE);
         if (p->x > 0)      // prevent going past left wall
             p->x -= 1;
         update_shape(p, DRAW);
     }
-    if((sw_pulled&0x2) != 0){
+    if(joystick_right()){
         update_shape(p, ERASE);
         if (p->x + max_w < GRID_WIDTH) // prevent going past right wall
             p->x += 1;
         update_shape(p, DRAW);
     }
-    if((sw_pulled&0x4) != 0){
+    if(sw_pulled& 0x1 ){
         update_shape(p, ERASE);
         // drop piece until collision
         while (collision(p)) {
@@ -543,10 +592,9 @@ void clear_lines(void){
 
 void tick(volatile char *VGA){
     
-    volatile int sw_pulled = get_sw();
-    if(sw_pulled){
-        move_piece(&current_piece);
-    }
+    
+    move_piece(&current_piece);
+    
    
     update_shape(&current_piece, ERASE);
 
@@ -594,29 +642,13 @@ void handle_interrupt(unsigned cause)
     
 }
 
-void start (){
-    for (int i = 0; i < width_screen * height_screen; i++) {
-        VGA[i] = 0x00; // black
-    }
 
-    const char *msg = "TETRIS";
-    
-    int msg_len = 6;
-    int start_x = width_screen / 2 - (msg_len * 6) / 2;
-    int start_y = height_screen/2  - 6;
-
-    for (int i = 0; i < msg_len; i++) {
-        draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
-    }
-
-  
-}
 
 
 int main() {
-    
-    start ();
-    delay(2000); 
+    joystick_init();
+    start();
+    delay(2000);
     for (int r = 0; r < GRID_HEIGHT; r++)
     for (int c = 0; c < GRID_WIDTH; c++)
         grid[r][c] = 0;
@@ -636,19 +668,14 @@ int main() {
    
     draw_shape(VGA, &current_piece);
     draw_next_piece(VGA, &next_piece);
-    
-   
-    
-    
+
     while(1) {
-        
+       
    
         if (get_btn()){
             delay(2000);
             rotate_piece(&current_piece);
         }
-        
-    
 
    
 }
