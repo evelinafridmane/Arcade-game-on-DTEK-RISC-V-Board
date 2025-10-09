@@ -19,7 +19,7 @@ main.bin: main.elf
 	$(TOOLCHAIN)objdump -D $< > $<.txt
 
 clean:
-	rm -f *.o *.elf *.bin *.txt
+	rm -f *.o *.elf *.bin main.elf.txt
 
 TOOL_DIR ?= ./tools
 run: main.bin

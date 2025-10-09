@@ -1,7 +1,7 @@
 /*
 This is the main file for the project, where we implement the different parts of the game of tetris, 
 specifically the setup such as the logic and creating and initialising the pieces and/or game.
-*/
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -318,7 +318,7 @@ int get_sw( void ){
  
 
 
-/*Set-up drawing and erasing things on the grids*/
+Set-up drawing and erasing things on the grids
 void draw_grid(volatile char *VGA){
     for (int row = 0; row < GRID_HEIGHT; row++){
         for (int col = 0; col < GRID_WIDTH; col++){
@@ -483,7 +483,7 @@ void show_score(int score) {
 
 }
 
-/*Piece Property functions*/
+Piece Property functions
 #define ERASE   0
 #define DRAW    1
 #define LOCK    2
@@ -738,5 +738,5 @@ int main() {
     }
 }
 
-
+*/
 
