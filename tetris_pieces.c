@@ -3,6 +3,7 @@ This is the main file for the project, where we implement the different parts of
 specifically the setup such as the logic and creating and initialising the pieces and/or game.
 */
 #include <stdint.h>
+#include <stddef.h>
 
 extern void enable_interrupt(void);
 
@@ -10,15 +11,16 @@ extern void enable_interrupt(void);
 #define height_screen 240
 #define GRID_WIDTH 10     
 #define GRID_HEIGHT 20
-#define block_size 8
+#define block_size 10
 #define GRID_COLOR 0x12 //to see the actual grid
-#define MAX_PIECES 300
+
 
 #define x_offset ((width_screen - GRID_WIDTH * block_size) / 2)
 #define y_offset ((height_screen - (GRID_HEIGHT) * block_size) / 2)
 
 char grid[GRID_HEIGHT][GRID_WIDTH];  // [row][col]
 int timeoutcount = 0;
+int score = 0;
 
 //Random number generator
 uint32_t seed;
@@ -33,24 +35,23 @@ uint8_t rand() {
   static uint8_t modulus = 1 << 6; 
   seed = (a * seed + c) % modulus;
   return seed;
-}
+} 
 
 //Copied from Lab exercise 1
 void delay( int ms ) {
-    volatile int i;
+
     
-    for (int i 
-     = 0; i < ms; i++) {
-        for (int j = 0; j < 4711; j++) {
+    for (int i  = 0; i < ms; i++) {
+        for (int j = 0; j < 5000; j++) {
             // do nothing
         }
     }
 }
 
 //SETUP FOR JOYSTICK
-#define JOY_LEFT  0x1  // bit x
-#define JOY_RIGHT 0x2  // bit y
-//#define JOY_BTN  0x4  // bit down
+#define JOY_LEFT  0x1  // bit x 0001
+#define JOY_RIGHT 0x2  // bit y 0010
+
 
 void joystick_init(void){
     volatile int* gpio_direction = (volatile int*)0x040000e4; //direction
@@ -69,10 +70,8 @@ int joystick_left(void){
 int joystick_right(void){
     return (get_joystick_data()& JOY_RIGHT) !=0;
 }
-/*
-int joystick_btn(void){
-    return (get_joystick_data()&JOY_BTN ) !=0;
-}*/
+
+
 
 
 
@@ -137,7 +136,17 @@ shape pieces[] = {
 
 const unsigned char font5x7[][5] = {
     // Each byte column (bit = 1 => pixel on)
-    // A–Z (ASCII 'A' = 65 → index 0)
+    {0x3E,0x51,0x49,0x45,0x3E}, // 0
+    {0x00,0x42,0x7F,0x40,0x00}, // 1
+    {0x42,0x61,0x51,0x49,0x46}, // 2
+    {0x21,0x41,0x45,0x4B,0x31}, // 3
+    {0x18,0x14,0x12,0x7F,0x10}, // 4
+    {0x27,0x45,0x45,0x45,0x39}, // 5
+    {0x3C,0x4A,0x49,0x49,0x30}, // 6
+    {0x01,0x71,0x09,0x05,0x03}, // 7
+    {0x36,0x49,0x49,0x49,0x36}, // 8
+    {0x06,0x49,0x49,0x29,0x1E}, // 9
+    
     {0x7E,0x11,0x11,0x7E,0x00}, // A
     {0x7F,0x49,0x49,0x36,0x00}, // B
     {0x3E,0x41,0x41,0x22,0x00}, // C
@@ -166,8 +175,7 @@ const unsigned char font5x7[][5] = {
     {0x61,0x51,0x49,0x47,0x00}, // Z
 };
 
-shape locked_pieces[MAX_PIECES];
-int num_locked = 0;
+
 
 void spawn_piece(shape *current){
     current_piece = *current;
@@ -191,43 +199,27 @@ int is_filled(shape *p) {
     return 0;
 }
 
-void draw_char(int x, int y, char c, char color) {
-    if (c == ' ') return; // skip space
 
-    if (c >= 'A' && c <= 'Z') {
-        const unsigned char *bitmap = font5x7[c - 'A'];
-        for (int col = 0; col < 5; col++) {
-            unsigned char bits = bitmap[col];
-            for (int row = 0; row < 7; row++) {
-                if (bits & (1 << row)) {
-                    VGA[(y + row) * width_screen + (x + col)] = color;
-                }
+void draw_char(int x, int y, char c, char color) {
+    const unsigned char *bitmap = NULL;
+
+    if (c >= '0' && c <= '9') {
+        bitmap = font5x7[c - '0'];
+    } else if (c >= 'A' && c <= 'Z') {
+        bitmap = font5x7[10 + (c - 'A')]; // letters start after 10 digits
+    } else {
+        return; 
+    }
+
+    for (int col = 0; col < 5; col++) {
+        unsigned char bits = bitmap[col];
+        for (int row = 0; row < 7; row++) {
+            if (bits & (1 << row)) {
+                VGA[(y + row) * width_screen + (x + col)] = color;
             }
         }
     }
 }
-
-void start() {
-        // clear screen
-        for (int i = 0; i < width_screen * height_screen; i++) {
-            VGA[i] = 0x00; // black background
-        }
-    
-        const char *msg = "TETRIS";
-        int msg_len = 6;
-        int start_x = width_screen / 2 - (msg_len * 8) / 2;
-        int start_y = height_screen / 2 - 6;
-    
-        // draw letters
-        for (int i = 0; i < msg_len; i++) {
-            draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
-        }
-    
-        // hold the screen for ~2 seconds
-        delay(2000);
-    }
-    
-
 
 void game_over(){
     for (int i = 0; i < width_screen * height_screen; i++) {
@@ -235,38 +227,58 @@ void game_over(){
     }
 
     const char *msg = "GAME OVER";
-    const char *msg2 = "SCORE";
+   
     int msg_len = 9;
     int start_x = width_screen / 2 - (msg_len * 8) / 2;
     int start_y = height_screen / 2 - 9;
-
-    int msg2_len = 5;
-    int start2_x = width_screen / 2 - (msg_len * 4) / 2;
-    int start2_y = height_screen / 2;
-
 
     for (int i = 0; i < msg_len; i++) {
         draw_char(start_x + i * 8, start_y, msg[i], 0xE0); // red letters
     }
 
+    const char *msg2 = "SCORE";
+    int msg2_len = 5;
+    int start2_x = width_screen / 2 - (msg2_len * 8) / 2;
+    int start2_y = height_screen / 2;
+
     for (int i = 0; i < msg2_len; i++) {
-        draw_char(start2_x + i * 5, start2_y, msg2[i], 0xE0); // red letters
+        draw_char(start2_x + i * 8, start2_y, msg2[i], 0xE0); // red letters
     }
 
+    int score_digits[6]; // up to 6 digits for your show_score function
+    score_digits[0] = (score / 100000) % 10;
+    score_digits[1] = (score / 10000) % 10;
+    score_digits[2] = (score / 1000) % 10;
+    score_digits[3] = (score / 100) % 10;
+    score_digits[4] = (score / 10) % 10;
+    score_digits[5] = score % 10;
+
+    int score_x = width_screen / 2 - (msg2_len * 8) / 2; // adjust centering for 6 digits
+    int score_y = start2_y + 10;
+
+    int leading = 1; // flag to skip leading zeros
+    for (int i = 0; i < 6; i++) {
+        if (!leading || score_digits[i] != 0 || i == 5) {
+            draw_char(score_x + i*8, score_y, '0' + score_digits[i], 0xE0);
+            leading = 0;
+        }
+    }
     while (1);
+
 }
 
 
 
-void spawn_next(){
+void spawn_next() {
     current_piece = next_piece;
+    current_piece.x = GRID_WIDTH / 2 - 2;
+    current_piece.y = 0;
     next_piece = pieces[rand() % 7];
-    spawn_piece(&current_piece);
-   
+    
+    // Check if new piece can be placed
     if (is_filled(&current_piece)) {
-        game_over(); 
+        game_over();
     }
-
 }
 
 
@@ -318,6 +330,7 @@ void draw_grid(volatile char *VGA){
 
             for (int y = 0; y < block_size; y++) {
                 for (int x = 0; x < block_size; x++){
+                    
                     // Draw border: only draw a single pixel at all edges
                     if (y == 0 || x == 0 || y == block_size - 1 || x == block_size - 1)
                     VGA[pixel_index + y * width_screen + x] = GRID_COLOR;
@@ -325,6 +338,7 @@ void draw_grid(volatile char *VGA){
                         VGA[pixel_index + y * width_screen + x] = color; // filled block
                     else
                         VGA[pixel_index + y * width_screen + x] = 0; // empty inside
+                
                 }
             }
         }
@@ -413,7 +427,61 @@ void update_cell(int row, int col, char color){
     }
 }
 
+void set_displays(int display_number, int value){
+    volatile int* DIS = (volatile int*)(0x04000050 + (0x10 * display_number));
+    switch(value){
+      case 0:
+        *DIS = 0xC0;
+        break;
+      case 1:
+        *DIS = 0xF9;
+        break;
+      case 2:
+        *DIS = 0xA4;
+        break;
+      case 3:
+        *DIS = 0xB0; 
+        break;
+      case 4:
+        *DIS = 0x99;
+        break;
+      case 5:
+        *DIS = 0x92;
+        break;
+      case 6:
+        *DIS = 0x82;
+        break;
+      case 7:
+        *DIS = 0xF8;
+        break;
+      case 8:
+        *DIS = 0x80;
+        break;
+      case 9:
+        *DIS = 0x90;
+        break;
+    }
+  }
 
+void show_score(int score) {
+    
+
+    int sixth = (score / 100000) % 10;
+    int fifth = (score / 10000) % 10;
+    int forth = (score / 1000) % 10;
+    int third  = (score / 100) % 10;
+    int second = (score / 10) % 10;
+    int first  = score % 10;
+
+    set_displays(0, first);
+    set_displays(1, second);
+    set_displays(2, third);
+    set_displays(3, forth);
+    set_displays(4, fifth);
+    set_displays(5, sixth);
+
+
+}
 
 /*Piece Property functions*/
 #define ERASE   0
@@ -457,57 +525,38 @@ void update_shape(shape *p, char mode){
         }
     }
 
-
-int check_fit(shape *p, int new_shape[4][4]){
+int can_move(shape *p, int dx, int dy, int new_shape[4][4]){
     for (int row = 0; row < 4; row++){
         for (int col = 0; col < 4; col++){
             if (new_shape[row][col]){
-                int grid_row = p->y + row;
-                int grid_col = p->x + col;
+                int grid_row = p->y + row +dy;
+                int grid_col = p->x + col + dx;
 
-                if (grid_row < 0 || grid_row >= GRID_HEIGHT || grid_col < 0 || grid_col >= GRID_WIDTH)
-                    return 0; // out of bounds
-                if (grid[grid_row][grid_col])
-                    return 0; // blocked by locked piece
+                if (grid_row< 0 || grid_row >= GRID_HEIGHT || grid_col < 0 || grid_col >= GRID_WIDTH) return 0;
+                if (grid[grid_row][grid_col]) return 0;
             }
         }
     }
     return 1;
 }
 
-int collision(shape *p) {
-        for (int y = 0; y < 4; y++) {
-            for (int x = 0; x < 4; x++) {
-                if (p->shape[y][x]) {
-                    int new_y = p->y + y + 1;
-                    int new_x = p->x + x;
-    
-                    // check collision with locked pieces & lower boundary
-                    if (new_y >= GRID_HEIGHT) return 0;
-                    if (grid[new_y][new_x]) return 0;
-
-                }
-            }
-        }
-        return 1;
-    } 
 
 void rotate_piece(shape *p) {
     int temp[4][4];
+    
     for (int y = 0; y < 4; y++){ 
         for (int x = 0; x < 4; x++){
-             temp[y][x] = 0; }}
-    
-    
-        
+             temp[y][x] = 0; 
+        }
+    }  
+            
     for (int row = 0; row < 4; row++) {
         for (int col = 0; col < 4; col++) {
-        temp[col][3 - row] = p->shape[row][col]; // 90° clockwise
-           
+            temp[col][3 - row] = p->shape[row][col]; // 90° clockwise
         }
     }
-    
-    if (check_fit(p,temp)){
+
+    if (can_move(p, 0, 0, temp)){
         for (int row = 0; row < 4; row++){
             for (int col = 0; col < 4; col++){
                 p->shape[row][col] = temp[row][col];
@@ -516,89 +565,92 @@ void rotate_piece(shape *p) {
     }
 }
 
-void move_piece(shape *p){
+void move_piece(shape *p, int joystick_data){
+    update_shape(p,ERASE);
+    int moved = 1;
     
-
     volatile int sw_pulled = get_sw();
     
-    int max_w = 0;
-    for (int y = 0; y < 4; y++){
-        for (int x = 0; x < 4; x++){
-            if (p->shape[y][x] && x + 1 > max_w){
-                max_w = x + 1;  
-    }}}
-    if(collision(&current_piece)){
-    if(joystick_left()){
-        update_shape(p, ERASE);
-        if (p->x > 0)      // prevent going past left wall
-            p->x -= 1;
-        update_shape(p, DRAW);
+    if (joystick_left() && can_move(p, -1, 0, p-> shape)){
+        p->x -= 1;
+        moved = 1;
     }
-    if(joystick_right()){
-        update_shape(p, ERASE);
-        if (p->x + max_w < GRID_WIDTH) // prevent going past right wall
-            p->x += 1;
-        update_shape(p, DRAW);
+    if (joystick_right() && can_move(p, 1, 0, p-> shape)){
+        p->x += 1;
+        moved = 1;
     }
-    if(sw_pulled& 0x1 ){
-        update_shape(p, ERASE);
-        // drop piece until collision
-        while (collision(p)) {
+    if (sw_pulled & 0x2){
+        while (can_move(p, 0, 1, p->shape)){
             p->y += 1;
         }
-        // move back one step to the last valid position
-        p->y -= 1;
+        moved = 1;     
+        score+=50;
+        show_score(score);  
+    } 
 
+    if (moved){
         update_shape(p, DRAW);
     }
-    }
 }
 
-void clear_lines(void){
-    for (int y = GRID_HEIGHT -1; y >= 0; y--){
+
+
+
+
+
+
+
+
+
+
+void clear_lines() {
+    for (int y = GRID_HEIGHT - 1; y >= 0; y--) {
         int full = 1;
 
-        for (int x= 0; x < GRID_WIDTH; x++){
-            if (grid[y][x] == 0){
-                full=0;
-                break;
-            }
-        }
-
+        for (int x = 0; x < GRID_WIDTH; x++)
+            if (grid[y][x] == 0) {
+                 full = 0;
+                 break;
+     }
         if (full) {
-            for (int x = 0; x < GRID_WIDTH; x++){
-                grid[y][x] = 0;
-                update_cell(y,x,0);
-            }
-
-            for (int yy = y; yy > 0; yy--) {
-                for (int x = 0; x < GRID_WIDTH; x++) {
-                    grid[yy][x] = grid[yy - 1][x];
-                    update_cell(yy, x, grid[yy][x]);
-                }
-            }
-
-            for (int x = 0; x < GRID_WIDTH; x++) {
-                grid[0][x] = 0;
-                update_cell(0, x, 0);
-            }
-
-            // After shifting, recheck same row (since we moved rows down)
-            y++;
+            for (int y_new = y; y_new > 0; y_new--)
+                for (int x = 0; x < GRID_WIDTH; x++)
+                    grid[y_new][x] = grid[y_new - 1][x];
+            for (int x = 0; x < GRID_WIDTH; x++) grid[0][x] = 0;
+            y++; // re-check same row after shifting
+            score+=100;
+            show_score(score); 
         }
     }
+       
 }
+
+  
+
 
 
 void tick(volatile char *VGA){
+    int joystick_data = get_joystick_data();
+   
     
-    
-    move_piece(&current_piece);
+    int switch_state = get_sw();
+
+    if (switch_state & 0x1) {
+        update_shape(&current_piece, ERASE);
+        rotate_piece(&current_piece);
+        update_shape(&current_piece, DRAW);
+       
+    }
+
     
    
-    update_shape(&current_piece, ERASE);
 
-    if (collision(&current_piece)){
+    move_piece(&current_piece, joystick_data);
+    
+   
+    
+
+    if (can_move(&current_piece, 0, 1, current_piece.shape)){
         current_piece.y+=1;  
     }
 
@@ -607,25 +659,19 @@ void tick(volatile char *VGA){
                 
         clear_lines();
         
-        if (num_locked < MAX_PIECES){
-            locked_pieces[num_locked++] = current_piece;
-        }
-        
         clear_next_shape(VGA, &next_piece);
         spawn_next();
         draw_next_piece(VGA, &next_piece);
     }
     
     draw_grid(VGA);
-
+   
     
-    for (int i = 0; i < num_locked; i++)
-        draw_shape(VGA, &locked_pieces[i]);
-
     
     draw_shape(VGA, &current_piece);
     
 }
+
 
 void handle_interrupt(unsigned cause) 
 {
@@ -642,19 +688,38 @@ void handle_interrupt(unsigned cause)
     
 }
 
+void start()
+{
+    for (int i = 0; i < width_screen * height_screen; i++){ 
+        VGA[i] = 0;
+        const char *msg = "TETRIS";
+        int msg_len = 6;
+        int start_x = width_screen / 2 - (msg_len * 8) / 2;
+        int start_y = height_screen / 2 - 10;
 
+
+        for (int i = 0; i < msg_len; i++)
+            draw_char(start_x + i * 8, start_y, msg[i], 0x5B);
+
+        delay(3000);
+        }
+    for (int i = 0; i < width_screen * height_screen; i++)
+        VGA[i] = 0;
+}
 
 
 int main() {
     joystick_init();
+    for (int r = 0; r < GRID_HEIGHT; r++){
+    for (int c = 0; c < GRID_WIDTH; c++){
+        grid[r][c] = 0;}}
+
+
     start();
-    delay(2000);
-    for (int r = 0; r < GRID_HEIGHT; r++)
-    for (int c = 0; c < GRID_WIDTH; c++)
-        grid[r][c] = 0;
     
     draw_grid(VGA);
     
+   
     labinit();
 
     int sw = get_sw();
@@ -662,23 +727,15 @@ int main() {
 
 
     next_piece = pieces[rand()%7];
-    
     spawn_next();
     
    
     draw_shape(VGA, &current_piece);
+    clear_next_shape(VGA, &next_piece);
     draw_next_piece(VGA, &next_piece);
 
     while(1) {
-       
-   
-        if (get_btn()){
-            delay(2000);
-            rotate_piece(&current_piece);
-        }
-
-   
-}
+    }
 }
 
 
